@@ -1,45 +1,40 @@
 import yfinance as yf
 import pandas as pd
-from datetime import datetime
 
 
-def fetch_price_data(
-    tickers: list[str],
-    start_date: str = "2020-01-01",
-    end_date: str | None = None,
-) -> pd.DataFrame:
+def fetch_price_data(tickers: list[str], period: str = "1y") -> pd.DataFrame:
     """
-    Fetch adjusted closing prices for given tickers.
+    Fetch adjusted closing prices for given tickers using yfinance.
     Returns a DataFrame indexed by date.
+    Supports periods like '1y', '6mo', '1mo', etc.
     """
 
-    if end_date is None:
-        end_date = datetime.today().strftime("%Y-%m-%d")
-
+    # Download data
     data = yf.download(
         tickers,
-        start=start_date,
-        end=end_date,
-        progress=False
+        period=period,
+        progress=False,
+        group_by="ticker",  # ensures MultiIndex if multiple tickers
+        auto_adjust=True    # adjusted close prices
     )
 
-    # Grab adjusted close prices
-    if isinstance(data.columns, pd.MultiIndex):
-        prices = data["Adj Close"]
+    # Handle single ticker vs multiple tickers
+    if len(tickers) == 1:
+        prices = data["Close"].to_frame(name=tickers[0])
     else:
-        prices = data.rename(columns={"Adj Close": tickers[0]})
+        # Multi-ticker: get 'Close' column for each ticker
+        prices = pd.concat([data[t]["Close"] for t in tickers], axis=1)
+        prices.columns = tickers
 
-    # Clean missing data
-    prices = prices.dropna()
+    # Drop rows where all tickers are NaN
+    prices = prices.dropna(how="all")
 
     return prices
 
 
 def compute_returns(prices: pd.DataFrame) -> pd.DataFrame:
     """
-    Convert price data into daily log returns.
+    Convert price data into daily percentage returns.
     """
-    returns = (prices / prices.shift(1)).apply(lambda x: pd.Series(x)).applymap(lambda x: None if pd.isna(x) else x)
     returns = prices.pct_change().dropna()
-
     return returns
