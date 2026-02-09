@@ -18,18 +18,27 @@ def fetch_price_data(tickers: list[str], period: str = "1y") -> pd.DataFrame:
         auto_adjust=True    # adjusted close prices
     )
 
-    # Handle single ticker vs multiple tickers
-    if len(tickers) == 1:
-        prices = data["Close"].to_frame(name=tickers[0])
+    # ------------------------------
+    # Extract Close prices robustly
+    # ------------------------------
+    if isinstance(data.columns, pd.MultiIndex):
+        # Multi-ticker or multi-index columns
+        frames = []
+        for t in tickers:
+            try:
+                frames.append(data[t]["Close"].rename(t))
+            except KeyError:
+                pass  # sometimes Yahoo doesn't have data for a ticker
+        prices = pd.concat(frames, axis=1)
     else:
-        # Multi-ticker: get 'Close' column for each ticker
-        prices = pd.concat([data[t]["Close"] for t in tickers], axis=1)
-        prices.columns = tickers
+        # Single ticker flat columns case
+        prices = data["Close"].to_frame(name=tickers[0])
 
     # Drop rows where all tickers are NaN
     prices = prices.dropna(how="all")
 
     return prices
+
 
 
 def compute_returns(prices: pd.DataFrame) -> pd.DataFrame:
