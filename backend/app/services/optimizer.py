@@ -48,7 +48,11 @@ def maximize_sharpe(returns: pd.DataFrame):
         constraints=constraints
     )
 
+    if not result.success:
+        raise RuntimeError("Sharpe optimization failed")
+
     return result.x
+
 
 
 # -------------------------------------------------------
@@ -77,7 +81,11 @@ def minimize_volatility(returns: pd.DataFrame):
         constraints=constraints
     )
 
+    if not result.success:
+        raise RuntimeError("Min volatility optimization failed")
+
     return result.x
+
 
 
 # -------------------------------------------------------
@@ -89,17 +97,24 @@ def efficient_frontier(returns: pd.DataFrame, points: int = 30):
     mean_returns = returns.mean()
     cov_matrix = returns.cov()
 
-    target_returns = np.linspace(
-        mean_returns.min(),
-        mean_returns.max(),
-        points
-    )
+    # Compute achievable portfolio return bounds
+    w_min = minimize_volatility(returns)
+    w_max = maximize_sharpe(returns)
+
+    r_min = portfolio_return(w_min, mean_returns)
+    r_max = portfolio_return(w_max, mean_returns)
+
+    target_returns = np.linspace(r_min, r_max, points)
 
     num_assets = len(mean_returns)
+    if num_assets < 2:
+        return []
+    
     frontier = []
 
     bnds = bounds(num_assets)
 
+    print("Target range:", r_min, "->", r_max)
     for target in target_returns:
 
         constraints = (
@@ -111,7 +126,7 @@ def efficient_frontier(returns: pd.DataFrame, points: int = 30):
             }
         )
 
-        init_guess = np.ones(num_assets) / num_assets
+        init_guess = w_min
 
         result = minimize(
             lambda w: portfolio_volatility(w, cov_matrix),
@@ -128,5 +143,8 @@ def efficient_frontier(returns: pd.DataFrame, points: int = 30):
                 "return": float(target),
                 "volatility": float(vol)
             })
+
+        if not result.success:
+            print("FAILED TARGET:", target)
 
     return frontier
